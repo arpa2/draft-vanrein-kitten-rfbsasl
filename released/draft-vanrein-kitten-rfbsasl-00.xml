@@ -1,0 +1,204 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="rfc2629.xslt"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<?rfc toc="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc subcompact="no" ?>
+<?rfc comments="yes" ?>
+<?rfc inline="yes" ?>
+
+<rfc ipr="trust200902" docName="draft-vanrein-kitten-rfbsasl-00" category="std">
+
+<front>
+
+	<title abbrev="RFB SASL">SASL Security for Remote Framebuffers</title>
+
+	<author initials="R" surname="Van Rein" fullname="Rick van Rein">
+		<organization>ARPA2.net</organization>
+		<address>
+			<postal>
+				<street>Haarlebrink 5</street>
+				<city>Enschede</city>
+				<region>Overijssel</region>
+				<code>7544 WP</code>
+				<country>The Netherlands</country>
+			</postal>
+			<email>rick@openfortress.nl</email>
+		</address>
+	</author>
+
+	<date day="3" month="September" year="2015"/>
+
+	<abstract>
+	<t>The Remote Framebuffer Protocol is widely used to provide remote
+	access to desktops.  This specification defines security levels that
+	are in line with these usage patterns.</t>
+	</abstract>
+
+</front>
+
+
+<middle>
+
+<section title="Introduction" anchor="intro">
+
+<t>The Remote Framebuffer Protocol (RFB) <xref target="RFC6143"/> is popular,
+but it only defines weak security mechanisms.  This is particularly problematic
+because the protocol is often used for remote administration, including
+remote support to users who lack the knowledge to verify the actions taken
+over the protocol.</t>
+
+<t>The existing protection of RFB is founded on passwords, that may be
+session-specific, but communicated over unprotected media.  Once again,
+the users that open their desktops for remote administration are not always
+in a position to share such passwords securely.</t>
+
+<t>This specification introduces a new Security Type for RFB, by introducing
+SASL into the authentication phase and, when available, employing its security
+layer for encryption after bootstrapping the connection.  SASL enables the use of
+strong encryption mechanisms.  Encryption is termed a "security layer" in SASL.</t>
+
+<t>A SASL mechanism worth mentioning is GSS-API, which introduces two
+commonly used families of security mechanisms.
+The first is Kerberos5 <xref target="RFC4121"/>, the other is
+EAP <xref target="RFC7055"/>, which in turn ties in with common authentication
+infrastructures such as RADIUS <xref target="RFC3579"/> and Tunneled TLS
+<xref target="RFC5281"/>.  These mechanisms are supportive
+of centralised management of access rights to RFB sessions.</t>
+
+<t>For use with Kerberos, a service ticket SHOULD use the service name
+"rfb", so a service ticket could have a principal name
+like "rfb/laptop.example.com@EXAMPLE.COM".  Beyond this service name prefix, this
+principal name example is not prescriptive; so, this specification does not exclude
+the use of additional descriptive levels with / or @ in any Kerberos-compliant
+manner to name independent sessions and/or user names.</t>
+
+</section>
+
+<section title="SASL Security Type Requirements">
+
+<t>Clients and servers may independently be configured to require either or both
+of encryption and authentication of their remote; SASL mechanisms exist that
+support mutual authentication and encryption, so mutual authentication is
+possible.  In addition, it is worth noting that authentication mechanisms can
+usually be extended to incorporate Diffie-Hellman for encryption.  This applies
+to both the modular-exponential and elliptic-curve forms.  Since such work falls
+in the scope of the SASL specifications, we shall not define such modifications
+in this specification, but future extensions could be helpful for the RFB
+application of SASL.</t>
+
+<t>Among the SASL mechanisms is the EXTERNAL mechanism
+[Appendix A of <xref target="RFC4422"/>]
+that can be used to refer to a wrapping protocol, such as the
+TLS <xref target="RFC5246"/> protocol that provides both encryption and mutual
+authentication.</t>
+
+</section>
+
+<section title="SASL Security Type Definition">
+
+<t>Immediately preceding the SASL-specific handshake, the client and server
+exchange a Security Handshake [Section 7.1.2 of <xref target="RFC6143"/>]
+in which the server offers security-types that include TBD, and the client
+selects security-type TBD.</t>
+
+<t>In response to the client selection of security-type TBD, the server
+sends a list of SASL mechanisms that it supports.  The mechanisms are listed
+by their sasl-mech name [Section 3.1 of <xref target="RFC4422"/>] with a
+space character %x20 separating the alternatives.  The format used for this
+information is:</t>
+
+<texttable>
+<ttcol>No. of bytes</ttcol><ttcol>Type [Value]</ttcol><ttcol>Description</ttcol>
+<c>2</c><c>U16</c><c>sasl-mech-length</c>
+<c>sasl-mech-length</c><c>U8 array</c><c>sasl-mech-string</c>
+</texttable>
+
+<t>The client now selects a mechanism from the space-separated list that
+the server offered, and sends the chosen sasl-mech name back
+to the server, using the same format, with the exception that only a single
+sasl-mech-string is sent and so no space characters %x20 occur in the
+sasl-mech-string.</t>
+
+<t>The SASL-specific exchange is then initiated by the client, and messages
+are passed back and forth until the server casts a final decision
+[Section 3 of <xref target="RFC4422"/>].  The information is sent in its
+binary form, without a need to use a transport encoding such as base64.
+It is however framed in the following format, in both directions:</t>
+
+<texttable>
+<ttcol>No. of bytes</ttcol><ttcol>Type [Value]</ttcol><ttcol>Description</ttcol>
+<c>2</c><c>U16</c><c>sasl-msg-length</c>
+<c>sasl-msg-length</c><c>U8 array</c><c>sasl-message</c>
+</texttable>
+
+<t>After the SASL exchange finishes, the server sends an RFB-style
+SecurityResult Handshake [Section 7.1.3 of <xref target="RFC6143"/>] and
+continues as it would for other security mechanisms.  The server MUST NOT
+send conflicting results in the final SASL message and the SecurityResult
+messages.  An aborted SASL exchange MUST be treated equivalently to a
+failed authentication attempt.</t>
+
+<t>Starting with the Initialization Messages
+[Section 7.4 of <xref target="RFC6143"/>], the protocol MUST be sent through
+the security layer defined for the SASL mechanism.  Only the EXTERNAL
+method is exempt from this requirement, under the assumption that it is
+run inside a layer that already encrypts the message flow.  Applications
+SHOULD assure that this is indeed the case.</t>
+
+<t>Some forms of encryption require framing when they are transported
+over a byte sequence abstraction such as offered by TCP; this is dealt with in
+the SASL specification [Section 3.7 of <xref target="RFC4422"/>] with a length
+prefix to the buffers being transmitted.  This means that no further framing
+is required of the RFB protocol, but implementations may interpret SASL
+framing when encryption is employed.</t>
+
+<t>An RFB implementation using the SASL security-type MUST provide each RFB message
+separately to the SASL layer for mapping it to a SASL message; when receiving,
+an RFB implementation MAY require that each SASL message represents precisely one
+RFB message.  On the wire, SASL messages are transmitted in its binary octet form,
+without further transport encodings such as base64.</t>
+
+</section>
+
+<section title="IANA Considerations">
+
+<t>This specification defines a security type named SASL, registered by IANA
+in the registry for Remote Framebuffer Security Types with numeric
+identifier TBD.</t>
+
+</section>
+
+<section title="Security Considerations">
+
+<t>Not all parts of the protocol described here are protected.  The
+unprotected parts are subject to various forms of attack, including
+downgrade attacks and denial-of-service attacks.  These risks apply
+to the RFB protocol version, the entire SASL exchange and the RFB
+SecurityResult.</t>
+
+</section>
+
+</middle>
+
+
+<back>
+
+<references title="Normative References">
+<?rfc include="reference.RFC.4422.xml"?>
+<?rfc include="reference.RFC.6143.xml"?>
+</references>
+
+<references title="Informative References">
+<?rfc include="reference.RFC.3579.xml"?>
+<?rfc include="reference.RFC.4121.xml"?>
+<?rfc include="reference.RFC.5246.xml"?>
+<?rfc include="reference.RFC.5281.xml"?>
+<?rfc include="reference.RFC.7055.xml"?>
+</references>
+
+</back>
+
+</rfc>

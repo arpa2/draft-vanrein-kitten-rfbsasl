@@ -1,0 +1,224 @@
+
+
+
+
+Network Working Group                                        R. Van Rein
+Internet-Draft                                                 ARPA2.net
+Intended status: Standards Track                       November 29, 2014
+Expires: June 2, 2015
+
+
+                 SASL Security for Remote Framebuffers
+                      draft-vanrein-rfbsasl-pre00
+
+Abstract
+
+   The Remote Framebuffer Protocol is widely used to provide remote
+   access to desktops.  This specification defines security levels that
+   are in line with these usage patterns.
+
+Status of This Memo
+
+   This Internet-Draft is submitted in full conformance with the
+   provisions of BCP 78 and BCP 79.
+
+   Internet-Drafts are working documents of the Internet Engineering
+   Task Force (IETF).  Note that other groups may also distribute
+   working documents as Internet-Drafts.  The list of current Internet-
+   Drafts is at http://datatracker.ietf.org/drafts/current/.
+
+   Internet-Drafts are draft documents valid for a maximum of six months
+   and may be updated, replaced, or obsoleted by other documents at any
+   time.  It is inappropriate to use Internet-Drafts as reference
+   material or to cite them other than as "work in progress."
+
+   This Internet-Draft will expire on June 2, 2015.
+
+Copyright Notice
+
+   Copyright (c) 2014 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents
+   (http://trustee.ietf.org/license-info) in effect on the date of
+   publication of this document.  Please review these documents
+   carefully, as they describe your rights and restrictions with respect
+   to this document.  Code Components extracted from this document must
+   include Simplified BSD License text as described in Section 4.e of
+   the Trust Legal Provisions and are provided without warranty as
+   described in the Simplified BSD License.
+
+
+
+
+
+Van Rein                  Expires June 2, 2015                  [Page 1]
+
+Internet-Draft                  RFB SASL                   November 2014
+
+
+Table of Contents
+
+   1.  Introduction  . . . . . . . . . . . . . . . . . . . . . . . .   2
+   2.  SASL Security Type Requirements . . . . . . . . . . . . . . .   2
+   3.  SASL Security Type Definition . . . . . . . . . . . . . . . .   3
+   4.  IANA Considerations . . . . . . . . . . . . . . . . . . . . .   4
+   5.  Security Considerations . . . . . . . . . . . . . . . . . . .   4
+   6.  References  . . . . . . . . . . . . . . . . . . . . . . . . .   4
+     6.1.  Normative References  . . . . . . . . . . . . . . . . . .   4
+     6.2.  Informative References  . . . . . . . . . . . . . . . . .   4
+   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .   4
+
+1.  Introduction
+
+   The Remote Framebuffer Protocol (RFB) [RFC6143] is popular, but it
+   only defines weak security mechanisms.  This is particularly
+   problematic because the protocol is often used for remote
+   administration, including remote support to users who lack the
+   knowledge to verify the actions taken over the protocol.
+
+   The existing protection of RFB is founded on passwords, that may be
+   session-specific, but communicated over unprotected media.  Once
+   again, the users that open their desktops for remote administration
+   are not always in a position to share such passwords securely.
+
+   This specification introduces a new Security Type for RFB, by
+   introducing SASL into the authentication phase and employing its
+   security layer for encryption after bootstrapping the connection.
+   SASL enables the use of strong encryption mechanisms.
+
+   A SASL mechanism worth mentioning is GSS-API, and specifically the
+   Kerberos5 mechanism.  This mechanism enables centralised management
+   of the rights to open address RFB sessions.  The service name to use
+   for an RFB service would be "rfb" so a service ticket could have a
+   principal name like "rfb/laptop.example.com@EXAMPLE.COM"; users are
+   distinct from service and would be represented with their customary
+   principal names.
+
+2.  SASL Security Type Requirements
+
+   Only SASL mechanisms that support encryption (a "security layer" in
+   SASL terminology) are permitted; but it should be noted that
+   authentication mechanisms can usually be extended to incorporate
+   Diffie-Hellman for encryption.  This applies to both the modular-
+   exponential form and elliptic curve forms.  We shall not define such
+   modifications to SASL in this specification.
+
+
+
+
+
+Van Rein                  Expires June 2, 2015                  [Page 2]
+
+Internet-Draft                  RFB SASL                   November 2014
+
+
+   Among the SASL mechanisms is the EXTERNAL mechanism [Appendix A of
+   [RFC4422]] that can be used to refer to a wrapping protocol, such as
+   TLS [RFC5246] that provides both encryption and mutual
+   authentication.
+
+3.  SASL Security Type Definition
+
+   After the client has ended the Security Handshake [Section 7.1.2 of
+   [RFC6143]] by settling on the type TBD1, the SASL-specific handshake
+   continues.
+
+   In response to the security-type issued by the client, the server
+   responds with a list of SASL mechanisms that it supports.  The
+   mechanisms are listed by their sasl-mech name [Section 3.1 of
+   [RFC4422]] with a space character %x20 separating the alternatives.
+   The format used for this information is:
+
+          +------------------+--------------+------------------+
+          | No. of bytes     | Type [Value] | Description      |
+          +------------------+--------------+------------------+
+          | 2                | U16          | sasl-mech-length |
+          | sasl-mech-length | U8 array     | sasl-mech-string |
+          +------------------+--------------+------------------+
+
+   The client now selects a mechanism, and sends the sasl-mech name back
+   to the server, using the same format, with the exception that only a
+   single sasl-mech-string is sent and so no spaces occur in the sasl-
+   mech-string.
+
+   The SASL-specific exchange is then initiated by the client, and
+   messages are passed back and forth until the server casts a final
+   decision [Section 3 of [RFC4422]].  The information is sent in its
+   binary form, without a need to use a transport encoding such as
+   base64.  It is however framed in the following format, in both
+   directions:
+
+           +-----------------+--------------+-----------------+
+           | No. of bytes    | Type [Value] | Description     |
+           +-----------------+--------------+-----------------+
+           | 2               | U16          | sasl-msg-length |
+           | sasl-msg-length | U8 array     | sasl-message    |
+           +-----------------+--------------+-----------------+
+
+   After the SASL exchange finishes, the server sends an RFB-style
+   SecurityResult Handshake [Section 7.1.3 of [RFC6143]] and continues
+   as it would for other security mechanisms.  The server MUST NOT send
+   different results in the final SASL message and the SecurityResult
+
+
+
+
+Van Rein                  Expires June 2, 2015                  [Page 3]
+
+Internet-Draft                  RFB SASL                   November 2014
+
+
+   messages.  An aborted SASL exchange MUST be treated equivalently to a
+   failed authentication attempt.
+
+   Starting with the Initialization Messages [Section 7.4 of [RFC6143]],
+   the protocol MUST be sent through the security layer defined for the
+   SASL mechanism.  Note that the EXTERNAL method is exempt from this
+   requirement, under the assumption that it is run inside a layer that
+   already encrypts the message flow.  Applications SHOULD assure that
+   this is indeed the case.
+
+4.  IANA Considerations
+
+   This specification introduces security type TBD1, registered by IANA
+   in the registry for Remote Framebuffer Security Types.
+
+5.  Security Considerations
+
+   Not all parts of the protocol described here are protected.  The
+   unprotected parts are subject to various forms of attack, including
+   downgrade attacks and denial-of-service attacks.  These risks apply
+   to the RFB protocol version, the entire SASL exchange and the RFB
+   final result.
+
+6.  References
+
+6.1.  Normative References
+
+   [RFC4422]  Melnikov, A. and K. Zeilenga, "Simple Authentication and
+              Security Layer (SASL)", RFC 4422, June 2006.
+
+   [RFC6143]  Richardson, T. and J. Levine, "The Remote Framebuffer
+              Protocol", RFC 6143, March 2011.
+
+6.2.  Informative References
+
+   [RFC5246]  Dierks, T. and E. Rescorla, "The Transport Layer Security
+              (TLS) Protocol Version 1.2", RFC 5246, August 2008.
+
+Author's Address
+
+   Rick van Rein
+   ARPA2.net
+   Haarlebrink 5
+   Enschede, Overijssel  7544 WP
+   The Netherlands
+
+   Email: rick@openfortress.nl
+
+
+
+
+Van Rein                  Expires June 2, 2015                  [Page 4]
